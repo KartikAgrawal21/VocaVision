@@ -30,6 +30,15 @@ def _bgr_to_name(bgr_pixel: np.ndarray) -> str:
     hsv = cv2.cvtColor(pixel, cv2.COLOR_BGR2HSV)[0][0]
     h, s, v = int(hsv[0]), int(hsv[1]), int(hsv[2])
 
+    # Low-saturation pixels are greys: split by brightness. Indoor light tints
+    # white shirts slightly, so the old strict white range reported "neutral".
+    if s < 45:
+        if v >= 150:
+            return "white"
+        if v <= 60:
+            return "black"
+        return "gray"
+
     for name, (lo_h, lo_s, lo_v), (hi_h, hi_s, hi_v) in _COLOR_RANGES:
         if lo_h <= h <= hi_h and lo_s <= s <= hi_s and lo_v <= v <= hi_v:
             return name

@@ -44,6 +44,18 @@ VocaVision/
 
 ---
 
+## Desktop App (recommended)
+
+Double-click **VocaVision** on the desktop (or run `VocaVision.pyw`). No terminal is needed.
+It opens a standalone window with photo upload (drag-and-drop or paste), a live camera mode,
+on-screen results with confidence scores, and spoken output. Everything runs offline.
+
+- Shortcuts: `U` upload, `C` camera, `Space` capture, `R` repeat voice, `M` mute
+- Recognition: YOLOv8 detector, cross-checked by a local CLIP model for single items
+- Logs: `%LOCALAPPDATA%\VocaVisionocavision.log`
+
+---
+
 ## Setup & Usage
 
 ### 1. Install dependencies

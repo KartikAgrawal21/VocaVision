@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VocaVision</title>
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Startup splash: shown while the models load -->
+<div id="splash" role="status" aria-live="polite">
+  <div class="splash-card">
+    <img src="logo.svg" alt="" class="splash-logo">
+    <h1>VocaVision</h1>
+    <p class="splash-tag">See clothing and food. Hear the description.</p>
+    <div class="loader"><span></span></div>
+    <p id="splash-msg" class="splash-msg">Starting up...</p>
+    <p id="splash-err" class="splash-err" hidden></p>
+  </div>
+</div>
+
+<div class="app" id="app" aria-hidden="true">
+  <header class="topbar">
+    <div class="brand">
+      <img src="logo.svg" alt="" width="40" height="40">
+      <div>
+        <div class="brand-name">VocaVision</div>
+        <div class="brand-sub">AI colour, clothing &amp; food recognition</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span class="pill" id="engine-pill" title="Recognition engines running locally">
+        <i class="dot"></i><span id="engine-text">Offline AI</span>
+      </span>
+      <button class="icon-btn" id="voice-toggle" aria-pressed="true" title="Speak results aloud (M)">
+        <svg viewBox="0 0 24 24" class="ico on"><path d="M3 10v4h4l5 4V6L7 10H3z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg viewBox="0 0 24 24" class="ico off"><path d="M3 10v4h4l5 4V6L7 10H3z"/><path d="M16 9l5 6m0-6l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span class="lbl">Voice</span>
+      </button>
+      <button class="icon-btn" id="theme-toggle" title="Switch light / dark theme">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M21 13.5A8.5 8.5 0 1 1 10.5 3a7 7 0 0 0 10.5 10.5z"/></svg>
+        <span class="lbl">Theme</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- LEFT: capture -->
+    <section class="card capture" aria-label="Capture">
+      <div class="tabs" role="tablist">
+        <button class="tab active" role="tab" id="tab-upload" aria-selected="true" data-tab="upload">
+          <svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5l5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Upload photo
+        </button>
+        <button class="tab" role="tab" id="tab-camera" aria-selected="false" data-tab="camera">
+          <svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          Live camera
+        </button>
+      </div>
+
+      <!-- Upload panel -->
+      <div class="panel" id="panel-upload">
+        <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose or drop a photo">
+          <img id="preview" alt="Selected photo" hidden>
+          <div class="drop-empty" id="drop-empty">
+            <div class="drop-icon">
+              <svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5l5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="drop-title">Drop a photo here</div>
+            <div class="drop-sub">or click to browse &middot; paste with <kbd>Ctrl</kbd>+<kbd>V</kbd></div>
+          </div>
+          <div class="drop-hover">Release to analyse</div>
+        </div>
+        <input type="file" id="file" accept="image/*" hidden>
+        <div class="row">
+          <button class="btn ghost" id="choose">Choose another photo</button>
+          <button class="btn primary" id="analyze-upload" disabled>
+            <svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" fill="currentColor"/></svg>
+            Analyse photo
+          </button>
+        </div>
+      </div>
+
+      <!-- Camera panel -->
+      <div class="panel" id="panel-camera" hidden>
+        <div class="viewfinder" id="viewfinder">
+          <video id="video" autoplay playsinline muted></video>
+          <div class="frame-guide" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <div class="cam-msg" id="cam-msg">Starting camera...</div>
+          <div class="flash" id="flash"></div>
+        </div>
+        <div class="row">
+          <button class="btn ghost" id="cam-restart">Restart camera</button>
+          <button class="btn primary big" id="analyze-cam" disabled>
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4.5" fill="currentColor"/></svg>
+            Capture &amp; analyse <kbd>Space</kbd>
+          </button>
+        </div>
+      </div>
+
+      <div class="tips">
+        <div class="tips-title">For the best result</div>
+        <ul>
+          <li>Hold the item <b>close and centred</b>, filling most of the frame</li>
+          <li>Use <b>good, even light</b> and a plain background</li>
+          <li>One item at a time works best</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- RIGHT: result -->
+    <section class="card result" aria-label="Result" aria-live="polite">
+      <div class="result-head">
+        <h2>Result</h2>
+        <span class="time" id="time" hidden></span>
+      </div>
+
+      <div class="empty" id="empty">
+        <div class="empty-art">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle cx="60" cy="60" r="52" class="e-ring"/>
+            <path d="M22 60c10-16 24-24 38-24s28 8 38 24c-10 16-24 24-38 24S32 76 22 60z" class="e-eye"/>
+            <circle cx="60" cy="60" r="12" class="e-pupil"/>
+          </svg>
+        </div>
+        <h3>Nothing analysed yet</h3>
+        <p>Add a photo of clothing or food, and VocaVision will describe it &mdash; on screen and out loud.</p>
+      </div>
+
+      <div class="busy" id="busy" hidden>
+        <div class="loader"><span></span></div>
+        <p>Analysing&hellip;</p>
+      </div>
+
+      <div class="output" id="output" hidden>
+        <figure class="shot">
+          <img id="result-img" alt="Annotated result">
+        </figure>
+
+        <div class="verdict">
+          <div class="verdict-text">
+            <div class="kicker" id="kind">I can see</div>
+            <div class="headline" id="headline">&mdash;</div>
+            <div class="chips" id="chips"></div>
+          </div>
+          <div class="ring" id="ring" role="img" aria-label="Confidence" hidden>
+            <svg viewBox="0 0 44 44"><circle class="r-bg" cx="22" cy="22" r="18"/><circle class="r-fg" id="ring-fg" cx="22" cy="22" r="18"/></svg>
+            <span id="ring-val">0%</span>
+          </div>
+        </div>
+
+        <p class="full-desc" id="full-desc"></p>
+
+        <div class="row">
+          <button class="btn primary" id="speak"><svg viewBox="0 0 24 24"><path d="M3 10v4h4l5 4V6L7 10H3z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span id="speak-lbl">Speak again</span> <kbd>R</kbd></button>
+          <button class="btn ghost" id="copy">Copy text</button>
+        </div>
+
+        <div class="matches" id="matches-wrap">
+          <div class="matches-title">Top matches</div>
+          <div id="matches"></div>
+        </div>
+      </div>
+      <div class="error" id="error" role="alert" hidden></div>
+    </section>
+  </main>
+
+  <section class="history" id="history-wrap" hidden aria-label="Recent results">
+    <div class="history-title">Recent</div>
+    <div class="history-list" id="history"></div>
+  </section>
+
+  <footer class="foot">
+    <div class="foot-row"><b>Food</b> Apple pie &middot; Fried rice &middot; Hamburger &middot; Hot dog &middot; Ice cream &middot; Pizza &middot; Ramen &middot; Samosa &middot; Sushi &middot; Waffles</div>
+    <div class="foot-row"><b>Clothing</b> T-shirt &middot; Shirt &middot; Pullover &middot; Coat &middot; Dress &middot; Trousers &middot; Sneaker &middot; Sandal &middot; Boot &middot; Bag</div>
+    <div class="foot-row dim">Runs completely offline on this computer. Shortcuts: <kbd>U</kbd> upload &middot; <kbd>C</kbd> camera &middot; <kbd>Space</kbd> capture &middot; <kbd>R</kbd> repeat &middot; <kbd>M</kbd> mute</div>
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

@@ -18,3 +18,15 @@ python-dotenv>=1.0.0,<2.0
 gradio>=4.0,<6.0
 gtts>=2.2.0,<3.0
 huggingface_hub>=0.20.0,<1.0
+
+# -- Detection / vision (used by vision_engine.py, app.py) --
+torch
+torchvision
+ultralytics
+rembg
+onnxruntime
+reportlab
+
+transformers>=4.40,<5
+
+flask>=3.0,<4
