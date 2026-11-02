@@ -34,3 +34,9 @@ Thumbs.db
 *.mp3
 *.wav
 *_result.jpg
+
+# Datasets and Training runs (large binaries)
+dataset/
+runs/
+weights/
+yolov8s.pt

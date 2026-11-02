@@ -1,32 +1,23 @@
-# ── Core ──────────────────────────────────────────────────────────────────────
+# ── Core Vision & Image Processing ──────────────────────────────────────────
 opencv-python>=4.9.0,<5.0
 pillow>=10.0.0,<12.0
 numpy>=1.26.0,<2.0
-
-# ── Neural Networks ───────────────────────────────────────────────────────────
-tensorflow>=2.16,<3.0
-tensorflow-datasets>=4.9.0,<5.0
-importlib_resources>=6.0,<8.0
 scikit-learn>=1.4.0,<2.0
-matplotlib>=3.8.0,<4.0
 
-# ── Desktop App ───────────────────────────────────────────────────────────────
+# ── Neural Networks & Object Detection ──────────────────────────────────────
+ultralytics>=8.1.0
+torch>=2.0.0
+torchvision>=0.15.0
+tensorflow>=2.16,<3.0
+
+# ── Offline Speech & System ──────────────────────────────────────────────────
 pyttsx3>=2.90,<3.0
 python-dotenv>=1.0.0,<2.0
 
-# ── Web / Deployment ─────────────────────────────────────────────────────────
-gradio>=4.0,<6.0
-gtts>=2.2.0,<3.0
-huggingface_hub>=0.20.0,<1.0
+# ── Optional: Enhanced Segmentation ─────────────────────────────────────────
+rembg>=2.0.50
 
-# -- Detection / vision (used by vision_engine.py, app.py) --
-torch
-torchvision
-ultralytics
-rembg
-onnxruntime
-reportlab
-
+# ── Desktop app + CLIP zero-shot cross-check ─────────────────────────────────
 transformers>=4.40,<5
-
 flask>=3.0,<4
+onnxruntime
