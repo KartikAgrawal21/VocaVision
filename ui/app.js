@@ -129,12 +129,40 @@
 
   // ── Camera ─────────────────────────────────────────────────
   let stream = null;
-  async function startCamera() {
+  const PHONE_CAM = /camo|iriun|droidcam|epoccam|phone link|cross device|obs|ivcam/i;
+  async function fillCameras() {
+    const sel = $("cam-select");
+    const cams = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
+    const saved = store.get("vv-cam", "");
+    sel.innerHTML = "";
+    cams.forEach((c, i) => { const o = new Option(c.label || `Camera ${i + 1}`, c.deviceId); sel.add(o); });
+    // Prefer the saved choice, else a phone-as-webcam device (Camo etc.), else the default.
+    const pick = cams.find((c) => c.deviceId === saved) || cams.find((c) => PHONE_CAM.test(c.label));
+    if (pick) sel.value = pick.deviceId;
+    return pick ? pick.deviceId : null;
+  }
+  $("cam-select").onchange = () => { store.set("vv-cam", $("cam-select").value); stopCamera(); startCamera(true); };
+  navigator.mediaDevices && (navigator.mediaDevices.ondevicechange = () => { if (tab === "camera") fillCameras(); });
+
+  async function startCamera(useSelected) {
     const msg = $("cam-msg"); msg.classList.remove("hide"); msg.textContent = "Starting camera...";
     $("analyze-cam").disabled = true;
     try {
       if (stream) return finishCam();
-      stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+      const size = { width: { ideal: 1280 }, height: { ideal: 720 } };
+      let id = useSelected ? $("cam-select").value : null;
+      if (!id) { try { id = await fillCameras(); } catch { /* labels need permission first */ } }
+      stream = await navigator.mediaDevices.getUserMedia({ video: id ? { ...size, deviceId: { exact: id } } : size, audio: false });
+      const labelled = await fillCameras();            // labels are available now that access is granted
+      const track = stream.getVideoTracks()[0];
+      if (track && track.getSettings().deviceId) $("cam-select").value = track.getSettings().deviceId;
+      if (!id && labelled && labelled !== track.getSettings().deviceId) {   // auto-switch to Camo if present
+        stopCamera(); id = labelled;
+        stream = await navigator.mediaDevices.getUserMedia({ video: { ...size, deviceId: { exact: id } }, audio: false });
+        $("cam-select").value = id;
+      }
+      const label = $("cam-select").selectedOptions[0]?.text || "";
+      $("video").classList.toggle("nomirror", PHONE_CAM.test(label));   // mirror only built-in webcams
       $("video").srcObject = stream;
       await $("video").play().catch(() => {});
       finishCam();
