@@ -1,2 +1,6 @@
 *.keras filter=lfs diff=lfs merge=lfs -text
 *.pt filter=lfs diff=lfs merge=lfs -text
+*.onnx filter=lfs diff=lfs merge=lfs -text
+*.pdf binary
+*.apk binary
+android/gradlew text eol=lf

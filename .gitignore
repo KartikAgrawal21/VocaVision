@@ -40,3 +40,9 @@ dataset/
 runs/
 weights/
 yolov8s.pt
+
+# Android
+android/local.properties
+android/.gradle/
+android/**/build/
+*.apk
