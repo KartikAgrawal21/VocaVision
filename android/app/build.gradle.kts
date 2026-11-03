@@ -44,4 +44,5 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:$camerax")
     implementation("androidx.camera:camera-view:$camerax")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
+    testImplementation("junit:junit:4.13.2")
 }

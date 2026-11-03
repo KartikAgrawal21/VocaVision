@@ -68,24 +68,23 @@ class Pipeline(private val detector: Detector, private val clip: ClipClassifier?
     }
 
     /**
-     * Colour of a region. CLIP reads whole scenes well but is unreliable on small flat crops
-     * (it can call plain white "navy blue"), so it is cross-checked against the measured median colour.
+     * Colour of a region, measured from its pixels (hue first, then dark/light). CLIP is only asked
+     * when the pixels say "light gray", which in dim light can really be a white item.
      */
     private fun colourFor(frame: Bitmap, l: Float, t: Float, r: Float, b: Float): String? {
-        val rgb = ColorNamer.medianRgb(frame, l, t, r, b)
-        val px = rgb?.let { ColorNamer.nearest(it) }
-        val cl = try { clip?.colourOf(frame, l, t, r, b)?.replace("navy blue", "navy") } catch (_: Throwable) { null }
-        val bright = rgb?.max() ?: 0
-        val pick = when {
-            cl == null -> px
-            px == null -> cl
-            cl == px -> cl
-            (cl == "black" || cl == "navy") && bright > 110 -> px
-            px in ACHROMATIC && ColorNamer.saturation(rgb!!) < 0.12f -> px
-            else -> cl
+        val px = ColorNamer.region(frame, l, t, r, b)
+        if (px == null) {
+            return try { clip?.colourOf(frame, l, t, r, b) } catch (_: Throwable) { null }
         }
-        notes.add("colour: clip=$cl pixel=$px rgb=${rgb?.joinToString(",")} -> $pick")
-        return pick
+        var name = px.name
+        var note = "pixels=${px.name} (${(px.share * 100).toInt()}% of area, S=${"%.2f".format(px.saturation)}, V=${"%.2f".format(px.value)})"
+        if (px.maybeWhite && clip != null) {
+            val cl = try { clip.colourOf(frame, l, t, r, b) } catch (_: Throwable) { null }
+            note += " clip=$cl"
+            if (cl == "white") name = "white"
+        }
+        notes.add("colour: $note -> $name")
+        return name
     }
 
     /** Builds the result from CLIP alone: the top item, plus shirt/trousers if both are clearly present. */
@@ -156,7 +155,6 @@ class Pipeline(private val detector: Detector, private val clip: ClipClassifier?
     companion object {
         private const val YOLO_SIZE = 640
         private const val SECOND_PIECE_MIN = 0.12f
-        private val ACHROMATIC = setOf("white", "black", "gray")
     }
 }
 
