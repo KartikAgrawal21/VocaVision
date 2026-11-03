@@ -56,8 +56,7 @@ class ClipClassifier(context: Context) {
 
     /** Scores the whole photo and its centre crop (where the item usually is) and averages them. */
     fun classify(src: Bitmap): Guess {
-        val w = src.width; val h = src.height
-        val centre = crop(src, 0.2f, 0.2f, 0.8f, 0.95f)
+        val centre = cropOf(src, 0.2f, 0.2f, 0.8f, 0.95f)
         val probs = FloatArray(names.size)
         for (img in listOf(src, centre)) {
             val e = embed(img)
@@ -74,14 +73,15 @@ class ClipClassifier(context: Context) {
 
     /** Colour of the region given as fractions of the image (left, top, right, bottom). */
     fun colourOf(src: Bitmap, left: Float, top: Float, right: Float, bottom: Float): String {
-        val e = embed(crop(src, left, top, right, bottom))
+        val e = embed(cropOf(src, left, top, right, bottom))
         val p = FloatArray(colours.size) { 100f * dot(e, colourEmb[it]) }
         var best = 0
         for (i in p.indices) if (p[i] > p[best]) best = i
         return colours[best]
     }
 
-    private fun crop(src: Bitmap, l: Float, t: Float, r: Float, b: Float): Bitmap {
+    /** A sub-picture given as fractions of the image (left, top, right, bottom). */
+    fun cropOf(src: Bitmap, l: Float, t: Float, r: Float, b: Float): Bitmap {
         val x = (l * src.width).toInt().coerceIn(0, src.width - 2)
         val y = (t * src.height).toInt().coerceIn(0, src.height - 2)
         val w = ((r - l) * src.width).toInt().coerceIn(2, src.width - x)

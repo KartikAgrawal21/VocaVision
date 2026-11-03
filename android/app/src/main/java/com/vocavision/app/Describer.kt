@@ -26,10 +26,11 @@ class Pipeline(private val detector: Detector, private val clip: ClipClassifier?
     }
 
     private fun runInternal(frame: Bitmap): Description {
-        val dets = detector.detect(frame, YOLO_SIZE)
+        val all = detector.detectAll(frame, YOLO_SIZE)
+        val dets = all.strict
 
         if (dets.isEmpty()) {
-            return if (clip == null) Describer.sentence(emptyList()) else fromClip(frame, clip.classify(frame))
+            return if (clip == null) Describer.sentence(emptyList()) else fromClip(frame, clip.classify(frame), all.loose)
         }
 
         if (clip != null) {
@@ -42,7 +43,7 @@ class Pipeline(private val detector: Detector, private val clip: ClipClassifier?
                 val agrees = a in b || b in a
                 val clipWins = guess.kind != "none" && !agrees &&
                     (guess.conf >= 0.85f || (best.conf < 0.60f && guess.conf >= best.conf))
-                if (clipWins) return fromClip(frame, guess)
+                if (clipWins) return fromClip(frame, guess, all.loose)
             }
         }
         return fromYolo(frame, dets)
@@ -81,51 +82,57 @@ class Pipeline(private val detector: Detector, private val clip: ClipClassifier?
         if (px.maybeWhite && clip != null) {
             val cl = try { clip.colourOf(frame, l, t, r, b) } catch (_: Throwable) { null }
             note += " clip=$cl"
-            if (cl == "white") name = "white"
+            // One direction only: CLIP calls a white striped shirt "gray", so it may upgrade to white
+            // (and only for a bright result), never downgrade a white.
+            if (cl == "white" && px.value >= 0.70f) name = "white"
         }
         notes.add("colour: $note -> $name")
         return name
     }
 
-    /** Builds the result from CLIP alone: the top item, plus shirt/trousers if both are clearly present. */
-    private fun fromClip(frame: Bitmap, g: ClipClassifier.Guess): Description {
+    /** Builds the result from CLIP alone: the top item, plus shirt AND trousers only when both are proven. */
+    private fun fromClip(frame: Bitmap, g: ClipClassifier.Guess, loose: List<Det>): Description {
         val c = clip!!
-        if (g.kind == "none" || g.conf < 0.30f) {
-            return Description("I am not sure what this is. Please move closer and try again.", emptyList())
-        }
+        val unsure = "I am not sure what this is. Please move closer and try again."
+        if (g.kind == "none" || g.conf < 0.30f) return Description(unsure, emptyList())
         val topCls = Labels.fromClip(g.name)
-        if (topCls < 0) return Description("I am not sure what this is. Please move closer and try again.", emptyList())
+        if (topCls < 0) return Description(unsure, emptyList())
 
-        // A person in shirt and trousers: report both when CLIP also rates the second garment.
-        var upperCls = -1
-        var lowerCls = -1
-        if (Labels.isUpperBody(topCls)) {
-            upperCls = topCls
-            if (probOf(c, g, Labels.TROUSER) >= SECOND_PIECE_MIN) lowerCls = Labels.TROUSER
-        } else if (topCls == Labels.TROUSER) {
-            lowerCls = topCls
-            upperCls = findBestUpper(c, g)
+        val split = if (Labels.isUpperBody(topCls) || topCls == Labels.TROUSER) splitCheck(frame, c) else null
+
+        // Where is the garment? A weak YOLO box of the same kind is a good locator even when it is too
+        // unsure to be reported; without one, fall back to the middle of the photo (never the bottom,
+        // which is trousers, belt or floor).
+        fun locate(cls: Int): FloatArray? {
+            val d = loose.filter {
+                sameKind(it.cls, cls) && it.conf >= 0.20f && it.x2 - it.x1 >= 0.15f && it.y2 - it.y1 >= 0.15f
+            }.maxByOrNull { it.conf } ?: return null
+            return floatArrayOf(d.x1, d.y1, d.x2, d.y2)
         }
-        val both = upperCls >= 0 && lowerCls >= 0
 
         val items = ArrayList<Triple<Int, Float, FloatArray>>()  // class, confidence, box
-        if (both) {
-            items.add(Triple(upperCls, probOf(c, g, upperCls), floatArrayOf(0.05f, 0.05f, 0.95f, 0.55f)))
-            items.add(Triple(lowerCls, probOf(c, g, lowerCls), floatArrayOf(0.05f, 0.45f, 0.95f, 0.97f)))
+        if (split != null) {
+            items.add(Triple(split.upper, split.upperConf, locate(split.upper) ?: floatArrayOf(0.05f, 0.05f, 0.95f, 0.55f)))
+            items.add(Triple(split.lower, split.lowerConf, locate(split.lower) ?: floatArrayOf(0.05f, 0.45f, 0.95f, 0.97f)))
         } else {
-            items.add(Triple(topCls, g.conf, floatArrayOf(0.05f, 0.05f, 0.95f, 0.95f)))
+            items.add(Triple(topCls, g.conf, locate(topCls) ?: floatArrayOf(0.05f, 0.05f, 0.95f, 0.95f)))
         }
 
         val found = items.map { (cls, p, box) ->
             val food = Labels.isFood(cls)
             val name = Labels.display(cls)
             val label = if (food) name else {
+                val located = locate(cls) != null
                 val colour = try {
                     when {
-                        both && Labels.isUpperBody(cls) -> colourFor(frame, 0.25f, 0.15f, 0.75f, 0.5f)
-                        both -> colourFor(frame, 0.3f, 0.6f, 0.7f, 0.95f)
-                        Labels.isUpperBody(cls) -> colourFor(frame, 0.28f, 0.6f, 0.72f, 0.98f)  // desktop's tuned crop
-                        else -> colourFor(frame, 0.3f, 0.3f, 0.7f, 0.7f)
+                        located -> {
+                            val w = box[2] - box[0]
+                            val h = box[3] - box[1]
+                            colourFor(frame, box[0] + w * 0.2f, box[1] + h * 0.2f, box[2] - w * 0.2f, box[3] - h * 0.2f)
+                        }
+                        split != null && Labels.isUpperBody(cls) -> colourFor(frame, 0.25f, 0.12f, 0.75f, 0.42f)
+                        split != null -> colourFor(frame, 0.30f, 0.62f, 0.70f, 0.92f)
+                        else -> colourFor(frame, 0.30f, 0.28f, 0.70f, 0.65f)
                     }
                 } catch (_: Throwable) { null }
                 if (colour != null) "$colour $name" else name
@@ -135,26 +142,31 @@ class Pipeline(private val detector: Detector, private val clip: ClipClassifier?
         return Describer.sentence(found)
     }
 
-    private fun findBestUpper(c: ClipClassifier, g: ClipClassifier.Guess): Int {
-        var best = -1
-        var bestP = SECOND_PIECE_MIN
-        for (i in g.probs.indices) {
-            val cls = Labels.fromClip(c.name(i))
-            if (cls >= 0 && Labels.isUpperBody(cls) && g.probs[i] >= bestP) { best = cls; bestP = g.probs[i] }
-        }
-        return best
+    private class Split(val upper: Int, val upperConf: Float, val lower: Int, val lowerConf: Float)
+
+    /**
+     * Shirt and trousers together are only reported when CLIP, looking at each half of the photo on its own,
+     * sees a shirt-type garment in the top half and trousers in the bottom half. A lone T-shirt lying on a
+     * floor looks like a T-shirt in both halves, so it is not given invented trousers.
+     */
+    private fun splitCheck(frame: Bitmap, c: ClipClassifier): Split? {
+        val top = c.classify(c.cropOf(frame, 0f, 0f, 1f, 0.55f))
+        val bottom = c.classify(c.cropOf(frame, 0f, 0.45f, 1f, 1f))
+        val up = Labels.fromClip(top.name)
+        val low = Labels.fromClip(bottom.name)
+        notes.add("halves: top=${top.name} ${(top.conf * 100).toInt()}%, bottom=${bottom.name} ${(bottom.conf * 100).toInt()}%")
+        val both = up >= 0 && Labels.isUpperBody(up) && top.conf >= 0.35f &&
+            low == Labels.TROUSER && bottom.conf >= 0.50f
+        return if (both) Split(up, top.conf, low, bottom.conf) else null
     }
 
-    private fun probOf(c: ClipClassifier, g: ClipClassifier.Guess, cls: Int): Float {
-        for (i in g.probs.indices) if (Labels.fromClip(c.name(i)) == cls) return g.probs[i]
-        return 0f
-    }
+    /** Same kind of thing: the identical class, or both are tops. */
+    private fun sameKind(a: Int, b: Int) = a == b || (Labels.isUpperBody(a) && Labels.isUpperBody(b))
 
     private fun norm(s: String) = s.lowercase().filter { it.isLetter() }
 
     companion object {
         private const val YOLO_SIZE = 640
-        private const val SECOND_PIECE_MIN = 0.12f
     }
 }
 
@@ -177,8 +189,23 @@ object Describer {
 
     private fun counted(items: List<Found>): List<String> =
         items.groupingBy { it.label }.eachCount().map { (label, n) ->
-            if (n == 1) "a $label" else "$n $label${if (label.endsWith("s")) "" else "s"}"
+            when {
+                n > 1 -> "$n ${plural(label)}"
+                isPlural(label) -> label                       // "beige trousers", "white sneakers"
+                else -> "${article(label)} $label"             // "a T-shirt", "an orange T-shirt"
+            }
         }
+
+    // "dress" ends in s but is singular; "trousers", "sandals" and "waffles" are plural.
+    private fun isPlural(label: String) = label.endsWith("s") && !label.endsWith("ss")
+
+    private fun article(label: String) = if (label.first().lowercaseChar() in "aeiou") "an" else "a"
+
+    private fun plural(label: String) = when {
+        isPlural(label) -> label
+        label.endsWith("ss") -> label + "es"
+        else -> label + "s"
+    }
 
     private fun oxford(items: List<String>): String = when (items.size) {
         1 -> items[0]

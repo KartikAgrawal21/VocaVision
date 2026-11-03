@@ -87,6 +87,36 @@ class ColourRulesTest {
         assertEquals("red", ColourRules.analyse(mix)!!.name)
     }
 
+    @Test fun heatherBlueThatTheCameraRendersAlmostGrayIsLightBlue() {
+        // Measured from a real phone photo: median about RGB (148,150,155), saturation 0.05, tint on ~80% of pixels.
+        assertEquals("light blue", name(147, 150, 157))
+    }
+
+    @Test fun plainGrayShirtsAreNotTurnedBlue() {
+        // Any gray shade is fine here; the point is that noise or a mild cast must not read as blue.
+        for ((r, g, b) in listOf(Triple(150, 150, 150), Triple(155, 150, 144), Triple(148, 150, 153))) {
+            val n = name(r, g, b)
+            assertTrue("($r,$g,$b) came out as '$n'", n == "gray" || n == "light gray")
+        }
+    }
+
+    @Test fun whiteShirtWithDarkStripesIsWhite() {
+        val whitePart = swatch(205, 200, 190, 390, 11)
+        val stripes = swatch(60, 58, 75, 110, 12)
+        assertEquals("white", ColourRules.analyse(whitePart + stripes)!!.name)
+    }
+
+    @Test fun whiteUnderWarmIndoorLightIsWhiteNotBeige() {
+        assertEquals("white", name(215, 205, 185))
+        assertEquals("white", name(225, 218, 205))
+    }
+
+    @Test fun blackShirtWithSmallWhitePrintIsBlack() {
+        val dark = swatch(28, 28, 32, 430, 13)
+        val print = swatch(230, 230, 230, 70, 14)
+        assertEquals("black", ColourRules.analyse(dark + print)!!.name)
+    }
+
     @Test fun emptyInputIsNull() {
         assertEquals(null, ColourRules.analyse(IntArray(0)))
         assertNotNull(ColourRules.analyse(swatch(10, 10, 10)))

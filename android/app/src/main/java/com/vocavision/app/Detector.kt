@@ -18,6 +18,12 @@ import kotlin.math.roundToInt
 /** One detection; box coordinates are normalised (0..1) against the upright source image. */
 class Det(val cls: Int, val conf: Float, val x1: Float, val y1: Float, val x2: Float, val y2: Float)
 
+/**
+ * [strict] uses the normal per-class confidence bars and is what gets reported.
+ * [loose] also keeps weak candidates; it is only used to find WHERE a garment is, never to say what it is.
+ */
+class Detections(val strict: List<Det>, val loose: List<Det>)
+
 /** Runs the custom VocaVision YOLOv8 model (exported to ONNX) on the phone with ONNX Runtime. */
 class Detector(context: Context) {
 
@@ -42,8 +48,10 @@ class Detector(context: Context) {
         session = env.createSession(bytes, opts)
     }
 
+    fun detect(src: Bitmap, size: Int): List<Det> = detectAll(src, size).strict
+
     /** [size] is the long side of the network input (the short side is scaled and padded to /32). */
-    fun detect(src: Bitmap, size: Int): List<Det> {
+    fun detectAll(src: Bitmap, size: Int): Detections {
         val scale = size.toFloat() / max(src.width, src.height)
         val nw = (src.width * scale).roundToInt().coerceAtLeast(1)
         val nh = (src.height * scale).roundToInt().coerceAtLeast(1)
@@ -79,7 +87,7 @@ class Detector(context: Context) {
         }
     }
 
-    private fun decode(raw: Array<FloatArray>, dx: Float, dy: Float, nw: Int, nh: Int): List<Det> {
+    private fun decode(raw: Array<FloatArray>, dx: Float, dy: Float, nw: Int, nh: Int): Detections {
         val anchors = raw[0].size
         val cands = ArrayList<Det>()
         for (i in 0 until anchors) {
@@ -89,7 +97,7 @@ class Detector(context: Context) {
                 val s = raw[4 + c][i]
                 if (s > bestScore) { bestScore = s; best = c }
             }
-            if (best < 0 || bestScore < Labels.threshold(best)) continue
+            if (best < 0 || bestScore < LOOSE_MIN) continue
 
             val cx = raw[0][i]; val cy = raw[1][i]
             val bw = raw[2][i]; val bh = raw[3][i]
@@ -100,7 +108,11 @@ class Detector(context: Context) {
             if (x2 - x1 < 0.01f || y2 - y1 < 0.01f) continue
             cands.add(Det(best, bestScore, x1, y1, x2, y2))
         }
-        return nms(cands)
+        val top = cands.sortedByDescending { it.conf }.take(MAX_CANDIDATES)
+        return Detections(
+            strict = nms(top.filter { it.conf >= Labels.threshold(it.cls) }),
+            loose = nms(top)
+        )
     }
 
     /** Class-aware non-maximum suppression, same idea as the desktop (Ultralytics) pipeline. */
@@ -147,5 +159,7 @@ class Detector(context: Context) {
         private const val IOU_LIMIT = 0.7f
         private const val GROUP_IOU_LIMIT = 0.75f
         private const val MAX_DETECTIONS = 20
+        private const val LOOSE_MIN = 0.15f
+        private const val MAX_CANDIDATES = 300
     }
 }

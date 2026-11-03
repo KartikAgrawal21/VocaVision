@@ -70,9 +70,29 @@ object ColourRules {
             val ss = FloatArray(neutralCount)
             var k = 0
             for (i in 0 until n) if (neutral[i]) { vs[k] = value[i]; ss[k] = sat[i]; k++ }
-            val v = median(vs)
-            val name = neutralName(v)
-            return Result(name, neutralCount / n.toFloat(), median(ss), v, name == "light gray")
+            // Median of the brighter three quarters: a white shirt with dark stripes (or a black one with a
+            // white print) is still named after its main colour, not dragged toward gray by the pattern.
+            val v = percentile(vs, 0.625f)
+            var name = neutralName(v)
+            var maybeWhite = name == "light gray" || (name == "white" && v < 0.82f)
+
+            // Cameras often render a pale blue or heather-blue shirt almost gray (saturation ~0.04). What gives
+            // it away is that the tint is consistent: nearly every pixel leans blue. Plain gray shirts only
+            // show random noise, and white in shade stays below the share needed here.
+            if (v >= 0.45f && v < 0.78f) {
+                var eligible = 0
+                val tint = ArrayList<Float>()
+                for (i in 0 until n) {
+                    if (!neutral[i] || value[i] < 0.45f) continue
+                    eligible++
+                    if (sat[i] >= 0.025f && hue[i] >= 190f && hue[i] <= 260f) tint.add(sat[i])
+                }
+                if (eligible > 0 && tint.size >= 0.65f * eligible && median(tint.toFloatArray()) >= 0.03f) {
+                    name = if (v >= 0.55f) "light blue" else "grayish blue"
+                    maybeWhite = v >= 0.62f
+                }
+            }
+            return Result(name, neutralCount / n.toFloat(), median(ss), v, maybeWhite)
         }
 
         val centreHue = centre * 15f + 7.5f
@@ -94,7 +114,7 @@ object ColourRules {
     }
 
     private fun neutralName(v: Float) = when {
-        v >= 0.80f -> "white"
+        v >= 0.74f -> "white"
         v >= 0.62f -> "light gray"
         v >= 0.40f -> "gray"
         v >= 0.20f -> "dark gray"
@@ -108,10 +128,12 @@ object ColourRules {
             else -> "red"
         }
         h < 45f -> when {           // orange, brown and beige/skin tones share this hue
+            s < 0.17f && v >= 0.72f -> "white"      // white under warm indoor light
             s < 0.50f -> if (v < 0.45f) "brown" else "beige"
             else -> if (v < 0.70f || s < 0.70f) "brown" else "orange"
         }
         h < 70f -> when {
+            s < 0.17f && v >= 0.72f -> "white"
             v < 0.55f -> "olive"
             s < 0.45f -> "beige"
             else -> "yellow"
@@ -137,9 +159,11 @@ object ColourRules {
         else -> if (v < 0.40f) "dark purple" else "pink"
     }
 
-    private fun median(a: FloatArray): Float {
+    private fun median(a: FloatArray): Float = percentile(a, 0.5f)
+
+    private fun percentile(a: FloatArray, q: Float): Float {
         if (a.isEmpty()) return 0f
         val s = a.sortedArray()
-        return s[s.size / 2]
+        return s[(s.size * q).toInt().coerceIn(0, s.size - 1)]
     }
 }
